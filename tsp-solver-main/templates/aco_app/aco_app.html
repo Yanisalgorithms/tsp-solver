@@ -1,0 +1,419 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ACO</title>
+    <link href="{% static 'style.css' %}" rel="stylesheet" />
+
+    <style>
+        header nav {
+            /* just to position your nav in the top-left corner */
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1000;
+        }
+
+        header nav a {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            margin-right: 0.5rem;
+            background-color: #4f46e5;
+            /* Bleu vif */
+            color: #fff;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 9999px;
+            /* full pill */
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+
+        header nav a:hover {
+            background-color: #4338ca;
+            /* Slightly darker on hover */
+            transform: translateY(-1px);
+        }
+
+        header nav a:active {
+            background-color: #3730a3;
+            /* Even darker when clicked */
+            transform: translateY(0);
+        }
+    </style>
+</head>
+
+<body>
+    <img src="{% static 'bg.jpg' %}" alt="" id="bg" />
+
+    <header>
+        <nav>
+            <a href="{% url 'home_app:meta_heuristics' %}">Meta Page</a>
+            <!-- <a href="{% url 'home_app:meta_heuristics' %}">Méta-heuristiques</a> -->
+        </nav>
+    </header>
+    <div class="container">
+        <!-- only one container -->
+
+        <!-- Form card -->
+        <div class="card">
+            <h1>ACO</h1>
+            <form id="configForm" method="post">
+                <input type="hidden" name="algo" value="{{ algo }}" />
+                <div>
+                    <label for="filename">benchmark files </label>
+                    <!-- <input type="text" id="filename" name="filename" value="berlin52_coords.txt" /> -->
+                    <select name="filename">
+                        <option value="berlin52_coords.txt">Berlin52</option>
+                        <option value="krA100_coords.txt">krA100</option>
+                        <option value="a280_coords.txt">a280</option>
+                        <option value="ch150_coords.txt">ch150</option>
+                        <option value="eil101_coords.txt">eil101</option>
+                        <option value="pr107_coords.txt">pr107</option>
+                        <option value="pr144_coords.txt">pr144</option>
+                        <option value="pr152_coords.txt">pr152</option>
+                        <option value="pr299_coords.txt">pr299</option>
+                        <option value="rat99_coords.txt">rat99</option>
+                        <option value="rat195_coords.txt">rat195</option>
+                        <option value="st70_coords.txt">st70</option>
+
+                    </select>
+                </div>
+                <div>
+                    <label for="ANT_COUNT">ANT_COUNT</label>
+                    <input type="number" id="ANT_COUNT" name="ANT_COUNT" value="50" min="1" step="1" />
+                    <span class="error-message"></span>
+                </div>
+
+                <div>
+                    <label for="NUM_ITERATIONS">NUM_ITERATIONS</label>
+                    <input type="number" id="NUM_ITERATIONS" name="NUM_ITERATIONS" value="500" min="1" step="1" />
+                    <span class="error-message"></span>
+                </div>
+
+                <div>
+                    <label for="ALPHA">Alpha (Influence of Pheromone)</label>
+                    <input type="number" id="ALPHA" name="ALPHA" value="1.0" min="0.5" max="2" step="0.1" />
+                    <span class="error-message"></span>
+                </div>
+
+                <div>
+                    <label for="BETA">Beta (Heuristic Influence)</label>
+                    <input type="number" id="BETA" name="BETA" value="3.0" min="2" max="5" step="0.1" />
+                    <span class="error-message"></span>
+                </div>
+
+                <div>
+                    <label for="EVAPORATION_RATE">Evaporation Rate</label>
+                    <input type="number" id="EVAPORATION_RATE" name="EVAPORATION_RATE" value="0.1" min="0.01" max="0.99"
+                        step="0.01" />
+                    <span class="error-message"></span>
+                </div>
+
+                <div>
+                    <label for="Q">Q (Amount Deposited)</label>
+                    <input type="number" id="Q" name="Q" value="100.0" min="0" step="1" />
+                    <span class="error-message"></span>
+                </div>
+
+                <button type="submit">Run solver</button>
+                <!-- <button type="button" id="compareButton">Comparer</button> -->
+            </form>
+        </div>
+
+        <!-- Results card -->
+        <div id="results" class="card hidden">
+            <!-- Convergence & error charts -->
+            <div>
+                <h2>Convergence</h2>
+                <canvas id="convergenceChart"></canvas>
+            </div>
+            <div>
+                <h2>Relative Error (%)</h2>
+                <canvas id="errorChart"></canvas>
+            </div>
+            <pre id="logConsole"></pre>
+
+            <!-- Best tour (initially hidden) -->
+            <div id="bestTour" class="full-width hidden">
+                <h2>Best Tour</h2>
+                <p id="bestTourText"></p>
+            </div>
+
+            <!-- Tour path (initially hidden) -->
+            <div id="pathContainer" class="full-width hidden">
+                <h2>Tour Path</h2>
+                <canvas id="pathChart"></canvas>
+            </div>
+        </div>
+
+        <!-- /container -->
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+        <script>
+            // Récupère la valeur d’un cookie
+            function getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== "") {
+                    document.cookie.split(";").forEach((cookie) => {
+                        const [key, val] = cookie.trim().split("=");
+                        if (key === name) cookieValue = decodeURIComponent(val);
+                    });
+                }
+                return cookieValue;
+            }
+            const csrftoken = getCookie("csrftoken");
+
+            document.addEventListener("DOMContentLoaded", () => {
+                const form = document.getElementById("configForm");
+                const compareButton = document.getElementById("compareButton");
+                const results = document.getElementById("results");
+                const logConsole = document.getElementById("logConsole");
+                const bestTourEl = document.getElementById("bestTour");
+                const bestTourText = document.getElementById("bestTourText");
+                const pathContainer = document.getElementById("pathContainer");
+                const pathCtx = document.getElementById("pathChart").getContext("2d");
+
+                let pathChart;
+                let distChart, errChart;
+                let lastIt = 0;
+                let pollInterval;
+
+                // 🟢 RESET FUNCTION
+                function restartAll() {
+                    results.classList.add("hidden");
+                    bestTourEl.classList.add("hidden");
+                    pathContainer.classList.add("hidden");
+                    logConsole.textContent = "";
+                    bestTourText.textContent = "";
+                    lastIt = 0;
+                    if (pollInterval) {
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                    }
+                    if (distChart) {
+                        distChart.destroy();
+                        distChart = null;
+                    }
+                    if (errChart) {
+                        errChart.destroy();
+                        errChart = null;
+                    }
+                    if (pathChart) {
+                        pathChart.destroy();
+                        pathChart = null;
+                    }
+                    document
+                        .getElementById("convergenceChart")
+                        .getContext("2d")
+                        .clearRect(0, 0, 400, 400);
+                    document
+                        .getElementById("errorChart")
+                        .getContext("2d")
+                        .clearRect(0, 0, 400, 400);
+                    document
+                        .getElementById("pathChart")
+                        .getContext("2d")
+                        .clearRect(0, 0, 400, 400);
+                }
+
+                // 🟢 On form submit
+                form.addEventListener("submit", async (e) => {
+                    e.preventDefault();
+                    restartAll();
+
+                    // Récupération des paramètres
+                    const data = {};
+                    new FormData(form).forEach((value, key) => {
+                        data[key] = isNaN(value) ? value : +value;
+                    });
+
+                    // Démarrage du job
+                    const startRes = await fetch("{% url 'aco_app:run_aco' %}", {
+                        method: "POST",
+                        credentials: "same-origin",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRFToken": csrftoken,
+                        },
+                        body: JSON.stringify(data),
+                    });
+
+                    if (!startRes.ok) {
+                        console.error("Échec démarrage job:", await startRes.text());
+                        return;
+                    }
+
+                    // 🔽 Récupération du job_id depuis la réponse JSON
+                    const startData = await startRes.json();
+                    const job_id = startData.job_id;
+
+                    results.classList.remove("hidden");
+                    logConsole.textContent = "";
+                    lastIt = 0;
+
+                    // Initialisation des graphiques Chart.js
+                    const ctxD = document
+                        .getElementById("convergenceChart")
+                        .getContext("2d");
+                    distChart = new Chart(ctxD, {
+                        type: "line",
+                        data: {
+                            labels: [],
+                            datasets: [
+                                {
+                                    label: "Distance",
+                                    data: [],
+                                    fill: false,
+                                },
+                            ],
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: { title: { display: true, text: "Iteration" } },
+                                y: { title: { display: true, text: "Distance" } },
+                            },
+                        },
+                    });
+
+                    const ctxE = document.getElementById("errorChart").getContext("2d");
+                    errChart = new Chart(ctxE, {
+                        type: "line",
+                        data: {
+                            labels: [],
+                            datasets: [
+                                {
+                                    label: "Error (%)",
+                                    data: [],
+                                    fill: false,
+                                },
+                            ],
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: { title: { display: true, text: "Iteration" } },
+                                y: { title: { display: true, text: "Error (%)" } },
+                            },
+                        },
+                    });
+
+                    // Lancement du polling avec le job_id
+                    pollInterval = setInterval(async () => {
+                        // 🔽 Ajout du job_id dans la requête GET
+                        const statusRes = await fetch(
+                            `{% url 'aco_app:result' %}?job_id=${encodeURIComponent(job_id)}`,
+                            {
+                                credentials: "same-origin",
+                            }
+                        );
+
+                        const job = await statusRes.json();
+                        console.log("🔄 Status du job :", job);
+
+                        if (job.logs && job.logs.length > lastIt) {
+                            const newLogs = job.logs.slice(lastIt);
+                            newLogs.forEach((entry) => {
+                                console.log(`📈 It ${entry.iteration}`, entry);
+                                distChart.data.labels.push(entry.iteration);
+                                distChart.data.datasets[0].data.push(entry.distance);
+                                errChart.data.labels.push(entry.iteration);
+                                errChart.data.datasets[0].data.push(entry.error);
+                                logConsole.textContent += `It ${entry.iteration} | Dist: ${entry.distance} | Err: ${entry.error}% | Time: ${entry.temps}s | totaltime: ${entry.temps_total}s\n`;
+                                logConsole.scrollTop = logConsole.scrollHeight;
+                            });
+                            distChart.update();
+                            errChart.update();
+                            lastIt = job.logs.length;
+                        }
+
+                        if (job.status === "done" || job.status === "error") {
+                            clearInterval(pollInterval);
+
+                            if (job.status === "done") {
+                                const tour = job.tour;                // ex. [0, 5, 2, 7, …]
+                                const fullTour = [...tour, tour[0]];  // ex. [0, 5, 2, 7, …, 0]
+                                bestTourEl.classList.remove("hidden");
+                                bestTourText.textContent = fullTour.join(" → ");
+                                const tourCoords = job.tour.map((idx) => ({
+                                    x: job.city_coords[idx][0],
+                                    y: job.city_coords[idx][1],
+                                }));
+                                tourCoords.push(tourCoords[0]);
+                                const startPoint = [tourCoords[0]];
+                                pathContainer.classList.remove("hidden");
+
+                                if (!pathChart) {
+                                    pathChart = new Chart(pathCtx, {
+                                        type: "scatter",
+                                        data: {
+                                            datasets: [
+                                                {
+                                                    label: "Tour",
+                                                    data: tourCoords,
+                                                    showLine: true,
+                                                    fill: false,
+                                                    borderColor: "#2563eb",
+                                                    pointRadius: 4,
+                                                    pointBackgroundColor: "#2563eb",
+                                                },
+                                                {
+                                                    label: "Start",
+                                                    data: startPoint,
+                                                    showLine: false,
+                                                    pointRadius: 8,
+                                                    pointBackgroundColor: "red",
+                                                },
+                                            ],
+                                        },
+                                        options: {
+                                            responsive: true,
+                                            scales: {
+                                                x: {
+                                                    type: "linear",
+                                                    title: { display: true, text: "X" },
+                                                },
+                                                y: {
+                                                    type: "linear",
+                                                    title: { display: true, text: "Y" },
+                                                },
+                                            },
+                                        },
+                                    });
+                                } else {
+                                    pathChart.data.datasets[0].data = tourCoords;
+                                    pathChart.update();
+                                }
+                                console.log("🖼️ pathChart instance:", pathChart);
+                                console.log(
+                                    "✅ Affichage du chemin, pathContainer classes:",
+                                    pathContainer.classList
+                                );
+                                logConsole.textContent += "\n✅ Execution finished\n";
+                                logConsole.scrollTop = logConsole.scrollHeight;
+
+                                return;
+                            }
+
+                            if (job.status === "error") {
+                                logConsole.textContent += `\nErreur serveur : ${job.error_msg}\n`;
+                            }
+                        }
+                    }, 250);
+                });
+
+                // 🟢 Compare button reset
+                compareButton.addEventListener("click", () => {
+                    restartAll();
+                    // Ajoutez ici la logique de comparaison si besoin
+                });
+            });
+        </script>
+</body>
+
+</html>
